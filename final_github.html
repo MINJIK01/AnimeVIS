@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Anime Visualization Dashboard</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://unpkg.com/topojson@3"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f9f9f9;
+    }
+    h1 {
+      text-align: center;
+      padding: 1rem;
+      font-size: clamp(1.5rem, 3vw, 2.5rem);
+    }
+    .chart-container {
+      width: 90%;
+      margin: auto;
+      position: relative;
+    }
+    svg, canvas {
+      width: 100%;
+      height: auto;
+      background-color: white;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    .tooltip {
+      position: absolute;
+      background: white;
+      border: 1px solid #ccc;
+      padding: 5px;
+      pointer-events: none;
+    }
+    .legend text {
+      font-size: clamp(10px, 1vw, 14px);
+    }
+    .reset-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      padding: 6px 12px;
+      font-size: clamp(12px, 1.3vw, 16px);
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .reset-btn:hover {
+      background-color: #45a049;
+    }
+    .controls {
+      margin: 1rem auto;
+      text-align: center;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 1rem;
+      font-size: clamp(12px, 1.2vw, 16px);
+    }
+    .controls .genre-buttons button {
+      margin: 2px;
+      padding: 6px 10px;
+      border: 1px solid #ccc;
+      background: #eee;
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: clamp(11px, 1.1vw, 15px);
+    }
+    .controls .genre-buttons button.active {
+      background-color: #4CAF50;
+      color: white;
+    }
+    #worldMapCanvas {
+      display: block;
+      height: auto;
+      cursor: pointer;
+    }
+    #region-info {
+      font-size: clamp(12px, 1.2vw, 18px);
+    }
+  
+    #region-info p {
+      margin: .25rem 0;
+      font-size: inherit;
+    }
+  
+    #region-info strong {
+      font-size: clamp(13px, 1.3vw, 18px);
+    }
+  
+    #region-info span {
+      font-size: inherit;
+    }
+  
+    #region-info img {
+      width: 80%;
+      max-width: 400px;
+      height: auto;
+      margin: 0 auto;
+      display: block;
+    }
+  
+    @media (max-width: 400px) {
+      #region-info {
+        text-align: center;
+      }
+  
+      #region-info > div {
+        flex-direction: column;
+        gap: 2rem;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Anime Trends and User Preferences</h1>
+  <div class="chart-container" style="display: flex; flex-wrap: nowrap; gap: 1rem; align-items: flex-start;">
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 1rem;">
+      <div style="position: relative;">
+        <h2>1. Popular Genres Over Time</h2>
+        <button class="reset-btn" id="resetZoom" style="top: 0.5rem; right: 0.5rem;">Reset Zoom</button>
+        <svg id="line-chart-svg" viewBox="0 0 960 400" preserveAspectRatio="xMidYMid meet"></svg>
+      </div>
+      <div>
+        <h2>2. Similar Anime Explorer</h2>
+        <div class="controls">
+          <div class="genre-buttons" id="genreButtons"></div>
+          <label>X Axis:
+            <select id="xAxisSelect">
+              <option value="Score">Score</option>
+              <option value="Popularity">Popularity</option>
+              <option value="Favorites">Favorites</option>
+              <option value="Scored By">Scored By</option>
+              <option value="Members">Members</option>
+            </select>
+          </label>
+          <label>Y Axis:
+            <select id="yAxisSelect">
+              <option value="Score">Score</option>
+              <option value="Popularity">Popularity</option>
+              <option value="Favorites">Favorites</option>
+              <option value="Scored By">Scored By</option>
+              <option value="Members">Members</option>
+            </select>
+          </label>
+        </div>
+        <svg id="scatter-plot-svg" viewBox="0 0 960 400" preserveAspectRatio="xMidYMid meet"></svg>
+      </div>
+    </div>
+    <div style="flex: 1; min-width: 200px;">
+      <h2>3. Regional Anime Preferences</h2>
+      <canvas id="worldMapCanvas"></canvas>
+      <div id="region-info">
+        <p><strong>Country:</strong> <span id="info-country">N/A</span></p>
+        <p><strong>Total User:</strong> <span id="info-user-num">N/A</span></p>
+        <p><strong>Top Genre:</strong> <span id="info-genre">N/A</span></p>
+        <p><strong>Top Anime:</strong> <span id="info-anime">N/A</span></p>
+        <p><strong>Avg Birth Year:</strong> <span id="info-age">N/A</span></p>
+        <p><strong>Gender Ratio:</strong> <span id="info-gender">N/A</span></p>
+        <div style="display: flex; gap: 1rem; align-items: flex-start; margin-top: 0.5rem; flex-wrap: wrap; justify-content: center;">
+          <div style="flex: 1; min-width: 200px; max-width: 45vw; text-align: center;">
+            <p><strong>Top Anime (Male)</strong></p>
+            <p><span id="info-anime-male">N/A</span></p>
+            <img id="img-anime-male" src="" alt="" style="width: 100%; height: auto;" />
+          </div>
+          <div style="flex: 1; min-width: 200px; max-width: 45vw; text-align: center;">
+            <p><strong>Top Anime (Female)</strong></p>
+            <p><span id="info-anime-female">N/A</span></p>
+            <img id="img-anime-female" src="" alt="" style="width: 100%; height: auto;" />
+          </div>
+        </div>        
+      </div>
+    </div>
+  </div>
+  
+  <script>
+
+    let genreColor;
+
+    const selectedGenresForLineChart = new Set();
+
+    function updateLineChartByGenres(selectedGenres) {
+      d3.selectAll("#line-chart-svg > *").remove();
+
+      d3.csv("https://raw.githubusercontent.com/MINJIK01/AnimeVIS/main/anime-dataset-2023-cleaned.csv").then(data => {
+        const svg = d3.select("#line-chart-svg");
+        const margin = {top: 20, right: 200, bottom: 40, left: 40};
+        const width = 960 - margin.left - margin.right;
+        const height = 400 - margin.top - margin.bottom;
+        const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+        const parseDate = d3.timeParse("%b %d, %Y");
+        data = data.filter(d => d.Aired && d.Genres);
+        data.forEach(d => {
+          const split = d.Aired.split(" to ");
+          d.date = parseDate(split[0]);
+        });
+
+        const genres = {};
+        data.forEach(d => {
+          if (d.date) {
+            d.Genres.split(", ").forEach(g => {
+              if (!genres[g]) genres[g] = [];
+              genres[g].push(d.date);
+            });
+          }
+        });
+
+        const targetGenres = selectedGenres.size > 0
+          ? Array.from(selectedGenres)
+          : Object.entries(genres).sort((a, b) => b[1].length - a[1].length).slice(0, 8).map(([g]) => g);
+
+        const genreSeries = targetGenres.map(genre => {
+          const dates = genres[genre] || [];
+          const counts = d3.rollup(dates, v => v.length, d => d3.timeMonth(d));
+          return {
+            genre,
+            values: Array.from(counts, ([k, v]) => ({date: k, count: v})).sort((a, b) => d3.ascending(a.date, b.date))
+          };
+        });
+
+        const minDate = new Date(1965, 0, 1);
+        const maxDate = d3.max(data, d => d.date);
+
+        let x = d3.scaleTime().domain([minDate, maxDate]).range([0, width]);
+        const y = d3.scaleLinear()
+          .domain([0, d3.max(genreSeries, s => d3.max(s.values, d => d.count))])
+          .nice()
+          .range([height, 0]);
+
+        const xAxisGroup = g.append("g").attr("transform", `translate(0,${height})`);
+        let xAxis = d3.axisBottom(x);
+        xAxisGroup.call(xAxis);
+        g.append("g").call(d3.axisLeft(y));
+
+        const clip = g.append("defs").append("clipPath")
+          .attr("id", "clip")
+          .append("rect")
+          .attr("width", width)
+          .attr("height", height);
+
+        const chartBody = g.append("g").attr("clip-path", "url(#clip)");
+        const line = d3.line()
+          .x(d => x(d.date))
+          .y(d => y(d.count));
+
+        // const color = genreColor || d3.scaleOrdinal(d3.schemeCategory10);
+        const color = genreColor;
+
+        const paths = genreSeries.map(series =>
+          chartBody.append("path")
+            .datum(series.values)
+            .attr("fill", "none")
+            .attr("stroke", color(series.genre))
+            .attr("stroke-width", 2)
+            .attr("d", line)
+        );
+
+        const legend = svg.append("g")
+          .attr("transform", `translate(${width + margin.left + 20}, ${margin.top})`)
+          .attr("class", "legend");
+
+        targetGenres.forEach((genre, i) => {
+          const row = legend.append("g")
+            .attr("transform", `translate(0, ${i * 20})`);
+
+          row.append("rect")
+            .attr("width", 12)
+            .attr("height", 12)
+            .attr("fill", color(genre));
+
+          row.append("text")
+            .attr("x", 18)
+            .attr("y", 10)
+            .text(genre);
+        });
+
+        const brush = d3.brushX()
+          .extent([[0, 0], [width, height]])
+          .on("end", brushed);
+
+        const brushGroup = g.append("g")
+          .attr("class", "brush")
+          .call(brush);
+
+        function brushed({selection}) {
+          if (!selection) return;
+          const [x0, x1] = selection.map(x.invert);
+          x.domain([x0, x1]);
+          xAxisGroup.transition().duration(750).call(xAxis);
+          paths.forEach((path, i) => {
+            path.transition().duration(750).attr("d", line(genreSeries[i].values));
+          });
+          brushGroup.call(brush.move, null);
+        }
+
+        d3.select("#resetZoom").on("click", () => {
+          x.domain([minDate, maxDate]);
+          xAxisGroup.transition().duration(750).call(xAxis);
+          paths.forEach((path, i) => {
+            path.transition().duration(750).attr("d", line(genreSeries[i].values));
+          });
+          brushGroup.call(brush.move, null);
+        });
+      });
+    }
+
+    // line chart
+    d3.csv("https://raw.githubusercontent.com/MINJIK01/AnimeVIS/main/anime-dataset-2023-cleaned.csv").then(data => {
+      const svg = d3.select("#line-chart-svg");
+      const margin = {top: 20, right: 200, bottom: 40, left: 40};
+      const width = 960 - margin.left - margin.right;
+      const height = 400 - margin.top - margin.bottom;
+
+      const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+      const parseDate = d3.timeParse("%b %d, %Y");
+      data = data.filter(d => d.Aired && d.Genres);
+      data.forEach(d => {
+        const split = d.Aired.split(" to ");
+        d.date = parseDate(split[0]);
+      });
+
+      const genres = {};
+      data.forEach(d => {
+        if (d.date) {
+          d.Genres.split(", ").forEach(g => {
+            if (!genres[g]) genres[g] = [];
+            genres[g].push(d.date);
+          });
+        }
+      });
+
+      const genreCounts = Object.entries(genres).map(([genre, dates]) => ({genre, count: dates.length}));
+      const topGenres = genreCounts.sort((a, b) => b.count - a.count).slice(0, 8).map(d => d.genre);
+
+      const genreSeries = topGenres.map(genre => {
+        const dates = genres[genre];
+        const counts = d3.rollup(dates, v => v.length, d => d3.timeMonth(d));
+        return {
+          genre,
+          values: Array.from(counts, ([k, v]) => ({date: k, count: v})).sort((a, b) => d3.ascending(a.date, b.date))
+        };
+      });
+
+      const minDate = new Date(1965, 0, 1);
+      const maxDate = d3.max(data, d => d.date);
+
+      let x = d3.scaleTime().domain([minDate, maxDate]).range([0, width]);
+      const y = d3.scaleLinear()
+        .domain([0, d3.max(genreSeries, s => d3.max(s.values, d => d.count))])
+        .nice()
+        .range([height, 0]);
+
+      const xAxisGroup = g.append("g").attr("transform", `translate(0,${height})`);
+      let xAxis = d3.axisBottom(x);
+      xAxisGroup.call(xAxis);
+
+      g.append("g").call(d3.axisLeft(y));
+
+      const clip = g.append("defs").append("clipPath")
+        .attr("id", "clip")
+        .append("rect")
+        .attr("width", width)
+        .attr("height", height);
+
+      const chartBody = g.append("g").attr("clip-path", "url(#clip)");
+
+      const line = d3.line()
+        .x(d => x(d.date))
+        .y(d => y(d.count));
+
+      const color = d3.scaleOrdinal()
+        .domain(topGenres)
+        .range(d3.schemeCategory10);
+
+      const paths = genreSeries.map(series =>
+        chartBody.append("path")
+          .datum(series.values)
+          .attr("fill", "none")
+          .attr("stroke", color(series.genre))
+          .attr("stroke-width", 2)
+          .attr("d", line)
+      );
+
+      const legend = svg.append("g")
+        .attr("transform", `translate(${width + margin.left + 20}, ${margin.top})`)
+        .attr("class", "legend");
+
+      topGenres.forEach((genre, i) => {
+        const row = legend.append("g")
+          .attr("transform", `translate(0, ${i * 20})`);
+
+        row.append("rect")
+          .attr("width", 12)
+          .attr("height", 12)
+          .attr("fill", color(genre));
+
+        row.append("text")
+          .attr("x", 18)
+          .attr("y", 10)
+          .text(genre);
+      });
+
+      const brush = d3.brushX()
+        .extent([[0, 0], [width, height]])
+        .on("end", brushed);
+
+      const brushGroup = g.append("g")
+        .attr("class", "brush")
+        .call(brush);
+
+      function brushed({selection}) {
+        if (!selection) return;
+        const [x0, x1] = selection.map(x.invert);
+        x.domain([x0, x1]);
+        xAxisGroup.transition().duration(750).call(xAxis);
+        paths.forEach((path, i) => {
+          path.transition().duration(750).attr("d", line(genreSeries[i].values));
+        });
+        brushGroup.call(brush.move, null);
+      }
+
+      d3.select("#resetZoom").on("click", () => {
+        x.domain([minDate, maxDate]);
+        xAxisGroup.transition().duration(750).call(xAxis);
+        paths.forEach((path, i) => {
+          path.transition().duration(750).attr("d", line(genreSeries[i].values));
+        });
+        brushGroup.call(brush.move, null);
+      });
+    });
+
+    // scatter plot
+    d3.csv("https://raw.githubusercontent.com/MINJIK01/AnimeVIS/main/anime-dataset-2023-cleaned.csv").then(data => {
+      const svg = d3.select("#scatter-plot-svg");
+      const margin = {top: 20, right: 40, bottom: 40, left: 60};
+      const width = 960 - margin.left - margin.right;
+      const height = 400 - margin.top - margin.bottom;
+      const g = svg.append("g")
+        .attr("transform", `translate(${margin.left},${margin.top})`);
+
+      const tooltip = d3.select("body").append("div")
+        .attr("class", "tooltip").style("opacity", 0);
+
+      const genreSet = new Set();
+      data.forEach(d => {
+        if (d.Genres) genreSet.add(d.Genres.split(", ")[0]);
+        d.PrimaryGenre = d.Genres ? d.Genres.split(", ")[0] : null;
+        d.Score = +d.Score;
+        d.Popularity = +d.Popularity;
+        d.Favorites = +d.Favorites;
+        d["Scored By"] = +d["Scored By"];
+        d.Members = +d.Members;
+      });
+
+
+      const genresArray = Array.from(new Set(data.map(d => d.PrimaryGenre))).sort();
+      const palette = d3.schemeTableau10.concat(d3.schemeSet3);
+      genreColor = d3.scaleOrdinal()
+        .domain(genresArray)
+        .range(palette.slice(0, genresArray.length));
+
+      const genreButtonsDiv = d3.select("#genreButtons");
+      const activeGenres = new Set();
+
+      genresArray.forEach(genre => {
+        genreButtonsDiv.append("button")
+          .text(genre)
+          .style("background", genreColor(genre))
+          .on("click", function() {
+            if (activeGenres.has(genre)) {
+              activeGenres.delete(genre);
+              d3.select(this).classed("active", false);
+            } else {
+              activeGenres.add(genre);
+              d3.select(this).classed("active", true);
+            }
+            updateScatterPlot();
+            updateLineChartByGenres(activeGenres);
+          });
+      });
+
+      const zoom = d3.zoom()
+        .scaleExtent([1, 10])
+        .translateExtent([[0, 0], [width, height]])
+        .extent([[0, 0], [width, height]])
+        .on("zoom", zoomed);
+
+      svg.append("defs").append("clipPath")
+        .attr("id", "scatter-clip")
+        .append("rect")
+        .attr("x", 0)
+        .attr("y", 0)
+        .attr("width", width)
+        .attr("height", height);
+
+      svg.call(zoom);
+
+      let xField = "Score";
+      let yField = "Score";
+      let x = d3.scaleLinear().range([0, width]);
+      let y = d3.scaleLinear().range([height, 0]);
+      const xAxisG = g.append("g").attr("transform", `translate(0,${height})`).attr("class", "x-axis");
+      const yAxisG = g.append("g").attr("class", "y-axis");
+
+      const pointsGroup = g.append("g")
+        .attr("clip-path", "url(#scatter-clip)");
+
+      let currentTransform = d3.zoomIdentity;
+
+      function updateScatterPlot() {
+        xField = document.getElementById("xAxisSelect").value;
+        yField = document.getElementById("yAxisSelect").value;
+
+        const filtered = data.filter(d =>
+          (activeGenres.size === 0 || activeGenres.has(d.PrimaryGenre)) &&
+          !isNaN(d[xField]) && !isNaN(d[yField])
+        );
+
+        x.domain(d3.extent(filtered, d => d[xField])).nice();
+        y.domain(d3.extent(filtered, d => d[yField])).nice();
+
+        xAxisG.call(d3.axisBottom(x));
+        yAxisG.call(d3.axisLeft(y));
+
+        const circles = pointsGroup.selectAll("circle").data(filtered, d => d.Name);
+
+        circles.enter().append("circle")
+          .merge(circles)
+          .attr("cx", d => x(d[xField]))
+          .attr("cy", d => y(d[yField]))
+          .attr("r", 4)
+          .attr("fill", d => genreColor(d.PrimaryGenre))
+          .attr("fill-opacity", 0.6)
+          .on("mouseover", (event, d) => {
+            tooltip.transition().duration(200).style("opacity", .9);
+            tooltip.html(`<strong>${d.Name}</strong><br>${xField}: ${d[xField]}<br>${yField}: ${d[yField]}`)
+              .style("left", (event.pageX + 10) + "px")
+              .style("top", (event.pageY - 28) + "px");
+          })
+          .on("mouseout", () => {
+            tooltip.transition().duration(960).style("opacity", 0);
+          });
+
+        circles.exit().remove();
+
+        svg.call(zoom.transform, currentTransform);
+      }
+
+      function zoomed(event) {
+        currentTransform = event.transform;
+        const zx = currentTransform.rescaleX(x);
+        const zy = currentTransform.rescaleY(y);
+
+        xAxisG.call(d3.axisBottom(zx));
+        yAxisG.call(d3.axisLeft(zy));
+
+        pointsGroup.selectAll("circle")
+          .attr("cx", d => zx(d[xField]))
+          .attr("cy", d => zy(d[yField]));
+      }
+
+      d3.select("#xAxisSelect").on("change", updateScatterPlot);
+      d3.select("#yAxisSelect").on("change", updateScatterPlot);
+      updateScatterPlot();
+    });
+
+    // World Map
+    const canvas = document.getElementById('worldMapCanvas');
+    const ctx = canvas.getContext('2d');
+    const projection = d3.geoNaturalEarth1();
+    const path = d3.geoPath(projection, ctx);
+    const sphere = {type:'Sphere'};
+    let countriesFC = null;
+    let bordersFC = null;
+    let selectedCountry = null;
+    let countryStats = {};
+
+    function setupSize(){
+      const width = canvas.clientWidth;
+      const height = width * 400/960;
+      canvas.width = width * devicePixelRatio;
+      canvas.height = height * devicePixelRatio;
+      canvas.style.height = height + 'px';
+      projection.fitSize([width, height], sphere);
+    }
+
+    function render(){
+      if(!countriesFC) return;
+      const w = canvas.width / devicePixelRatio;
+      const h = canvas.height / devicePixelRatio;
+      ctx.clearRect(0,0,w,h);
+      ctx.save();
+      ctx.scale(devicePixelRatio, devicePixelRatio);
+      ctx.beginPath(); path(sphere); ctx.fillStyle = '#e0f7fa'; ctx.fill();
+      ctx.beginPath(); path(countriesFC); ctx.fillStyle = '#90caf9'; ctx.fill();
+      if(selectedCountry){
+        ctx.beginPath(); path(selectedCountry); ctx.fillStyle = '#4e7bbf'; ctx.fill();
+      }
+      if(bordersFC){
+        ctx.beginPath(); path(bordersFC); ctx.strokeStyle = '#fff'; ctx.lineWidth = 0.7; ctx.stroke();
+      }
+      ctx.beginPath(); path(sphere); ctx.strokeStyle = '#333'; ctx.stroke();
+      ctx.restore();
+    }
+
+
+    function animateSelection(oldCountry, newCountry) {
+      const steps = 20;
+      let currentStep = 0;
+
+      function animate() {
+        currentStep++;
+        const t = currentStep / steps;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.save();
+        ctx.scale(devicePixelRatio, devicePixelRatio);
+        ctx.beginPath(); path(sphere); ctx.fillStyle = '#e0f7fa'; ctx.fill();
+        ctx.beginPath(); path(countriesFC); ctx.fillStyle = '#90caf9'; ctx.fill();
+
+        // interpolate selection
+        if (newCountry) {
+          ctx.beginPath();
+          path(newCountry);
+          ctx.fillStyle = `rgba(78, 123, 191, ${t})`;  // 점점 진해지는 색
+          ctx.fill();
+        }
+
+        if (bordersFC) {
+          ctx.beginPath(); path(bordersFC);
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 0.7;
+          ctx.stroke();
+        }
+
+        ctx.beginPath(); path(sphere); ctx.strokeStyle = '#333'; ctx.stroke();
+        ctx.restore();
+
+        if (currentStep < steps) {
+          requestAnimationFrame(animate);
+        }
+      }
+
+      animate();
+    }
+
+
+    canvas.addEventListener('click', (e)=>{
+      if(!countriesFC) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * (canvas.width/rect.width) / devicePixelRatio;
+      const y = (e.clientY - rect.top ) * (canvas.height/rect.height) / devicePixelRatio;
+      const [lon, lat] = projection.invert([x,y]);
+      const country = countriesFC.features.find(f=>d3.geoContains(f,[lon,lat]));
+      if(country){
+        selectedCountry = country;
+        animateSelection(selectedCountry, country);
+        const cname = country.properties.name || 'Unknown';
+        document.getElementById('info-country').textContent = cname;
+
+        const stat = countryStats[cname];
+        if(stat){
+          document.getElementById('info-user-num').textContent = stat.User_Num || 'N/A';
+          document.getElementById('info-genre').textContent = stat.Top_Genre || 'N/A';
+          document.getElementById('info-anime').textContent = stat.Top_Anime || 'N/A';
+          document.getElementById('info-age').textContent = stat.Avg_Age ? (+stat.Avg_Age).toFixed(1) : 'N/A';
+          document.getElementById('info-gender').textContent =
+            (stat.Male_Ratio || stat.Female_Ratio) ? 
+            `Male ${(stat.Male_Ratio * 100).toFixed(0)}% / Female ${(stat.Female_Ratio * 100).toFixed(0)}%` : 'N/A';
+
+          document.getElementById('info-anime-male').textContent = stat.Top_Anime_Male || 'N/A';
+          document.getElementById('img-anime-male').src = stat.Image_URL_Male || '';
+          document.getElementById('img-anime-male').style.display = stat.Image_URL_Male ? 'block' : 'none';
+
+          document.getElementById('info-anime-female').textContent = stat.Top_Anime_Female || 'N/A';
+          document.getElementById('img-anime-female').src = stat.Image_URL_Female || '';
+          document.getElementById('img-anime-female').style.display = stat.Image_URL_Female ? 'block' : 'none';
+        } else {
+          document.querySelectorAll('#region-info span').forEach(span => span.textContent = 'N/A');
+          document.getElementById('img-anime-male').style.display = 'none';
+          document.getElementById('img-anime-female').style.display = 'none';
+        }
+      } else {
+        selectedCountry = null;
+      }
+      render();
+    });
+
+    function init(){
+      setupSize();
+      render();
+
+      const initialCountry = countriesFC.features.find(
+        f => f.properties.name === "South Korea"
+      );
+
+      if (initialCountry) {
+        selectedCountry = initialCountry;
+        const cname = initialCountry.properties.name;
+        document.getElementById('info-country').textContent = cname;
+
+        const stat = countryStats[cname];
+        if(stat){
+            document.getElementById('info-user-num').textContent = stat.User_Num || 'N/A';
+            document.getElementById('info-genre').textContent = stat.Top_Genre || 'N/A';
+            document.getElementById('info-anime').textContent = stat.Top_Anime || 'N/A';
+            document.getElementById('info-age').textContent = stat.Avg_Age ? (+stat.Avg_Age).toFixed(1) : 'N/A';
+            document.getElementById('info-gender').textContent =
+              (stat.Male_Ratio || stat.Female_Ratio) ? 
+              `Male ${(stat.Male_Ratio * 100).toFixed(0)}% / Female ${(stat.Female_Ratio * 100).toFixed(0)}%` : 'N/A';
+
+            document.getElementById('info-anime-male').textContent = stat.Top_Anime_Male || 'N/A';
+            document.getElementById('img-anime-male').src = stat.Image_URL_Male || '';
+            document.getElementById('img-anime-male').style.display = stat.Image_URL_Male ? 'block' : 'none';
+
+            document.getElementById('info-anime-female').textContent = stat.Top_Anime_Female || 'N/A';
+            document.getElementById('img-anime-female').src = stat.Image_URL_Female || '';
+            document.getElementById('img-anime-female').style.display = stat.Image_URL_Female ? 'block' : 'none';
+          } else {
+            document.querySelectorAll('#region-info span').forEach(span => span.textContent = 'N/A');
+            document.getElementById('img-anime-male').style.display = 'none';
+            document.getElementById('img-anime-female').style.display = 'none';
+          }
+
+        render();
+      }
+    }
+
+    window.addEventListener('resize', ()=>{ setupSize(); render(); });
+
+    Promise.all([
+      d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json'),
+      d3.csv('https://raw.githubusercontent.com/MINJIK01/AnimeVIS/main/country_stat.csv')
+    ]).then(([world, stats]) => {
+
+      countriesFC = topojson.feature(world, world.objects.countries);
+      bordersFC   = topojson.mesh(world, world.objects.countries, (a, b) => a !== b);
+
+      stats.forEach(d => {
+        d.User_Num = parseFloat(d.User_Num);
+        d.Avg_Age = parseFloat(d.Avg_Age);
+        d.Male_Ratio = parseFloat(d.Male_Ratio);
+        d.Female_Ratio = parseFloat(d.Female_Ratio);
+        d.User_Num = parseInt(d.User_Num);
+
+        countryStats[d.Country] = d;
+      });
+
+      init();
+    });
+  </script>
+</body>
+</html>
